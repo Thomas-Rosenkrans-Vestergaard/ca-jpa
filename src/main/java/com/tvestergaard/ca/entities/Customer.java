@@ -78,26 +78,25 @@ public class Customer
     @Override public boolean equals(Object o)
     {
         if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (!(o instanceof Customer)) return false;
         Customer customer = (Customer) o;
-        return id == customer.id &&
-               Objects.equals(name, customer.name) &&
-               Objects.equals(email, customer.email) &&
-               Objects.equals(orders, customer.orders);
+        return getId() == customer.getId() &&
+                Objects.equals(getName(), customer.getName()) &&
+                Objects.equals(getEmail(), customer.getEmail()) &&
+                Objects.equals(new ArrayList<>(getOrders()), new ArrayList<>(customer.getOrders()));
     }
 
     @Override public int hashCode()
     {
-        return Objects.hash(id, name, email, orders);
+        return Objects.hash(getId(), getName(), getEmail(), getOrders());
     }
 
     @Override public String toString()
     {
         return "Customer{" +
-               "id=" + id +
-               ", name='" + name + '\'' +
-               ", email='" + email + '\'' +
-               ", orders=" + orders +
-               '}';
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", email='" + email + '\'' +
+                '}';
     }
 }

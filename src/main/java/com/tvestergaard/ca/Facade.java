@@ -34,7 +34,7 @@ public class Facade implements Repository
      */
     private TransactionalRepository newTransactionalRepository()
     {
-        return new TransactionalRepository(entityManagerFactory.createEntityManager());
+        return new TransactionalRepository(entityManagerFactory);
     }
 
     /**

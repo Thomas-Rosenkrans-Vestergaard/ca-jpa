@@ -8,25 +8,27 @@ import org.junit.Before;
 import org.junit.Test;
 
 import javax.persistence.EntityManagerFactory;
-import javax.persistence.EntityTransaction;
 import javax.persistence.Persistence;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
-import static junit.framework.TestCase.assertNotNull;
+import static com.tvestergaard.ca.TransactionStrategy.COMMIT;
+import static com.tvestergaard.ca.TransactionStrategy.ROLLBACK;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.*;
 
 public class TransactionalRepositoryTest
 {
 
-    private static final EntityManagerFactory    emf = Persistence.createEntityManagerFactory("jpau-test");
-    private              TransactionalRepository instance;
+    private static final EntityManagerFactory emf = Persistence.createEntityManagerFactory("jpau-test");
+    private TransactionalRepository instance;
 
     @Before
     public void setUp() throws Exception
     {
-        instance = new TransactionalRepository(emf.createEntityManager());
+        instance = new TransactionalRepository(emf);
     }
 
     @After
@@ -36,49 +38,67 @@ public class TransactionalRepositoryTest
     }
 
     @Test
-    public void getTransaction()
-    {
-        assertNotNull(instance.getTransaction());
-        assertFalse(instance.getTransaction().isActive());
-        instance.begin();
-        assertTrue(instance.getTransaction().isActive());
-    }
-
-    @Test
-    public void onTransaction()
-    {
-
-    }
-
-    @Test
     public void begin()
     {
-        EntityTransaction transaction = instance.getTransaction();
-        assertFalse(transaction.isActive());
-        instance.begin();
-        assertTrue(transaction.isActive());
+        assertTrue(instance.isActive());
+        instance.rollback();
+        assertFalse(instance.isActive());
     }
 
     @Test
     public void commit()
     {
-
+        Customer customer = instance.createCustomer("Name", "Email");
+        instance.commit();
+        TransactionalRepository other = new TransactionalRepository(emf);
+        assertEquals(customer, other.findCustomer(customer.getId()));
     }
 
     @Test
     public void rollback()
     {
+        TransactionalRepository other    = new TransactionalRepository(emf);
+        Customer                customer = instance.createCustomer("Name", "Email");
+        assertEquals(customer, instance.findCustomer(customer.getId()));
+        instance.rollback();
+        assertNull(instance.findCustomer(customer.getId()));
+        assertNull(other.findCustomer(customer.getId()));
     }
 
     @Test
-    public void close()
+    public void onCloseCommit() throws Exception
     {
+        instance.onClose(COMMIT);
+        Customer customer = instance.createCustomer("Name", "Email");
+        instance.close();
+        TransactionalRepository other = new TransactionalRepository(emf);
+        assertEquals(customer, other.findCustomer(customer.getId()));
+    }
+
+    @Test
+    public void onCloseRollback() throws Exception
+    {
+        instance.onClose(ROLLBACK);
+        TransactionalRepository other    = new TransactionalRepository(emf);
+        Customer                customer = instance.createCustomer("Name", "Email");
+        assertEquals(customer, instance.findCustomer(customer.getId()));
+        instance.close();
+        assertNull(other.findCustomer(customer.getId()));
+    }
+
+    @Test
+    public void isActive() throws Exception
+    {
+        assertTrue(instance.isActive());
+        instance.rollback();
+        assertFalse(instance.isActive());
+        instance.begin();
+        assertTrue(instance.isActive());
     }
 
     @Test
     public void createCustomer()
     {
-        instance.begin();
         Customer customer = instance.createCustomer("Name", "Email");
         Customer find     = instance.findCustomer(customer.getId());
         assertEquals(customer, find);
@@ -98,7 +118,6 @@ public class TransactionalRepositoryTest
     {
         List<Customer> customers = instance.getCustomers();
 
-        assertEquals(4, customers.size());
         assertEquals("Thomas Vestergaard", customers.get(0).getName());
         assertEquals("Sanne Vestergaard", customers.get(1).getName());
         assertEquals("Kasper Vestergaard", customers.get(2).getName());
@@ -108,7 +127,6 @@ public class TransactionalRepositoryTest
     @Test
     public void createOrder()
     {
-        instance.begin();
         Customer customer = instance.createCustomer("Purchaser", "email@email.com");
         Order    order    = instance.createOrder(customer);
         Order    find     = instance.getOrder(order.getId());
@@ -118,7 +136,6 @@ public class TransactionalRepositoryTest
     @Test
     public void getOrder()
     {
-        instance.begin();
         Customer customer = instance.createCustomer("Purchaser", "email@email.com");
         Order    order    = instance.createOrder(customer);
         Order    find     = instance.getOrder(order.getId());
@@ -134,19 +151,20 @@ public class TransactionalRepositoryTest
     @Test
     public void getOrders()
     {
-        instance.begin();
         List<Order> created  = new ArrayList<>();
         Customer    customer = instance.createCustomer("Purchaser", "email@email.com");
         for (int x = 0; x < 4; x++)
             created.add(instance.createOrder(customer));
 
-        assertEquals(created, instance.getOrders());
+
+        Set<Order> orders = new HashSet<>(instance.getOrders());
+        for (Order order : created)
+            assertTrue(orders.contains(order));
     }
 
     @Test
     public void getOrdersFromCustomer()
     {
-        instance.begin();
         List<Order> created  = new ArrayList<>();
         Customer    customer = instance.createCustomer("Purchaser", "email@email.com");
         for (int x = 0; x < 4; x++)
@@ -162,8 +180,6 @@ public class TransactionalRepositoryTest
     @Test
     public void createOrderLine()
     {
-        instance.begin();
-
         Customer       customer = instance.createCustomer("Orderer", "orderer@order.com");
         Order          order    = instance.createOrder(customer);
         List<ItemType> items    = instance.getItems();
@@ -177,8 +193,6 @@ public class TransactionalRepositoryTest
     @Test
     public void createItemType()
     {
-        instance.begin();
-
         String name        = "ItemName";
         String description = "ItemDescription";
         long   price       = 98234l;
@@ -190,8 +204,6 @@ public class TransactionalRepositoryTest
     @Test
     public void getTotal()
     {
-        instance.begin();
-
         Customer       customer = instance.findCustomer(1);
         Order          order    = instance.createOrder(customer);
         List<ItemType> items    = instance.getItems();

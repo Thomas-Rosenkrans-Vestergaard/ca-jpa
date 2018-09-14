@@ -82,12 +82,20 @@ public class Order
         if (o == null || getClass() != o.getClass()) return false;
         Order order = (Order) o;
         return id == order.id &&
-               Objects.equals(customer, order.customer) &&
-               Objects.equals(lines, order.lines);
+                Objects.equals(customer, order.customer) &&
+                Objects.equals(new ArrayList<>(lines), new ArrayList<>(order.lines));
     }
 
     @Override public int hashCode()
     {
-        return Objects.hash(id, customer, lines);
+        return Objects.hash(id, customer, new ArrayList<>(lines));
+    }
+
+    @Override public String toString()
+    {
+        return "Order{" +
+                "id=" + id +
+                ", customer=" + customer +
+                '}';
     }
 }

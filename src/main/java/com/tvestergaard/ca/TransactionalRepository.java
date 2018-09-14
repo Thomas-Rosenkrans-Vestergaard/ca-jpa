@@ -5,12 +5,8 @@ import com.tvestergaard.ca.entities.ItemType;
 import com.tvestergaard.ca.entities.Order;
 import com.tvestergaard.ca.entities.OrderLine;
 
-import javax.persistence.EntityManager;
-import javax.persistence.EntityTransaction;
-import javax.persistence.NoResultException;
-import javax.persistence.TypedQuery;
+import javax.persistence.*;
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Repository implementation that provides support for transactions across operations.
@@ -29,71 +25,101 @@ public class TransactionalRepository implements Repository, AutoCloseable
     private final EntityTransaction transaction;
 
     /**
+     * The operation to perform when the {@link TransactionalRepository} is closed. If the {@link TransactionalRepository}
+     * has been committed or rolled back manually, no action is taken.
+     *
+     * @see TransactionalRepository#onClose(TransactionStrategy)
+     * @see TransactionalRepository#close()
+     */
+    private TransactionStrategy onClose;
+
+    /**
      * Creates a new {@link TransactionalRepository}. Begins the transaction.
      *
-     * @param entityManager The {@code EntityManager} that the object performs operations on.
+     * @param entityManagerFactory The {@code EntityManagerFactory} that the object creates an {@code EntityManager}
+     *                             from.
+     * @param onClose              The operation to perform when the {@link TransactionalRepository} is closed. If the
+     *                             {@link TransactionalRepository} has been committed or rolled back manually, no action
+     *                             is taken.
      */
-    public TransactionalRepository(EntityManager entityManager)
+    public TransactionalRepository(EntityManagerFactory entityManagerFactory, TransactionStrategy onClose)
     {
-        this.entityManager = entityManager;
+        this.entityManager = entityManagerFactory.createEntityManager();
         this.transaction = entityManager.getTransaction();
+        this.transaction.begin();
+        this.onClose = onClose;
     }
 
     /**
-     * Creates a new {@link TransactionalRepository}.
+     * Creates a new {@link TransactionalRepository}. Begins the transaction.
      *
-     * @param entityManager        The {@code EntityManager} that the object performs operations on.
-     * @param transactionOperation Some operation that is executed on the transaction.
+     * @param entityManagerFactory The {@code EntityManagerFactory} that the object creates an {@code EntityManager}
+     *                             from.
      */
-    public TransactionalRepository(EntityManager entityManager, Consumer<EntityTransaction> transactionOperation)
+    public TransactionalRepository(EntityManagerFactory entityManagerFactory)
     {
-        this.entityManager = entityManager;
-        this.transaction = entityManager.getTransaction();
-        transactionOperation.accept(transaction);
+        this(entityManagerFactory, TransactionStrategy.COMMIT);
     }
 
     /**
-     * Returns the currently active transaction.
+     * Sets the operation to perform when the {@link TransactionalRepository} is closed. If the
+     * {@link TransactionalRepository} has been committed or rolled back manually, no action is taken.
      *
-     * @return The currently active transaction.
+     * @param strategy The action to perform when this object is closed, and the transaction is still active.
+     * @return this
+     * @see TransactionalRepository#onClose(TransactionStrategy)
+     * @see TransactionalRepository#close()
      */
-    public EntityTransaction getTransaction()
+    public TransactionalRepository onClose(TransactionStrategy strategy)
     {
-        return this.transaction;
+        this.onClose = strategy;
+
+        return this;
     }
 
     /**
-     * Performs an operation on the currently active transaction.
+     * Checks if the transaction used in this object is currently active.
      *
-     * @param operation The operation to perform on the currently active transaction.
+     * @return {@code true} if the transaction used in this object is currently active.
+     * @see EntityTransaction#isActive()
      */
-    public void onTransaction(Consumer<EntityTransaction> operation)
+    public boolean isActive()
     {
-        operation.accept(transaction);
+        return transaction.isActive();
     }
 
     /**
      * Begins the currently active transaction.
+     *
+     * @return this
      */
-    public void begin()
+    public TransactionalRepository begin()
     {
         transaction.begin();
+
+        return this;
     }
 
     /**
      * Commits the currently active transaction.
+     *
+     * @return this
      */
-    public void commit()
+    public TransactionalRepository commit()
     {
         transaction.commit();
+
+        return this;
     }
 
     /**
      * Rolls back changes made to the currently active transaction.
      */
-    public void rollback()
+    public TransactionalRepository rollback()
     {
         transaction.rollback();
+
+        return this;
     }
 
     /**
@@ -102,7 +128,12 @@ public class TransactionalRepository implements Repository, AutoCloseable
     @Override public void close()
     {
         if (transaction.isActive())
-            transaction.rollback();
+            if (onClose == TransactionStrategy.COMMIT)
+                transaction.commit();
+            else if (onClose == TransactionStrategy.ROLLBACK)
+                transaction.rollback();
+            else
+                throw new UnsupportedOperationException("Unsupported TransactionStrategy " + onClose.name());
 
         entityManager.close();
     }
@@ -237,9 +268,9 @@ public class TransactionalRepository implements Repository, AutoCloseable
     @Override public long getTotal(Order order)
     {
         return order.getLines()
-                .stream()
-                .map(l -> l.getQuantity() * l.getItem().getPrice())
-                .reduce(0l, Math::addExact);
+                    .stream()
+                    .map(l -> l.getQuantity() * l.getItem().getPrice())
+                    .reduce(0l, Math::addExact);
     }
 
     /**
