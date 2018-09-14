@@ -31,7 +31,6 @@ The JPA strategy for handling Object Relational Mapping is to use XML configurat
 provide sensible defaults for most configuration options. I chose to use annotations over XML because the annotations are 
 located on the entity they configure, compared to giant XML configuration files.
 
-The most important annotations are:
 ```java
 @Entity // Marks a class as an Entity
 @Table  // Configures the table, the Entity represents, in the database. 
